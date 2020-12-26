@@ -1,45 +1,92 @@
-Mediante el uso de iptables para GNU/Linux construir un sistema que clasifique el tráfico RTP y SIP,
-cada uno de ellos con un tipo para mejorar la calidad de servicio apreciada.
-Apartado 1: ENTORNO DE TRABAJO.
-Describir detalladamente el entorno de trabajo utilizado para realizar la práctica.
-● Trabajar en tres máquinas (se recomiendan virtuales): router, servidor y cliente.
-● Configurar dos interfaces de red en el pc que actúe como router, una interfaz para el
-cliente y otra para el servidor en subredes distintas.
-● Configurar tablas de enrutamiento y habilitar ip_forwarding en el router.
-Apartado 2: MARCADO DE PAQUETES.
-Describir los pasos necesarios para marcar los paquetes del modo deseado:
-● Marcar tráfico en RTP y SIP según corresponda a valores correctos de DSCP
-mediante la tabla mangle de iptables.
-○ Justificar los valores DSCP utilizados.
-● Usando dscp de iptables tratar los flujos de tráfico dando prioridad a RTP y
-asegurándose que ningún paquete SIP es eliminado.
-● Documentar el uso de los parámetros de iptables utilizados.
-Apartado 3: ANÁLISIS DEL RENDIMIENTO.
-Realizar y describir las siguientes pruebas con y sin marcado de paquetes. Documentar las
-conclusiones obtenidas.
-● Saturar la conexión utilizando iperf
-● Generar tráfico SIP (elegir 1 forma de hacerlo):
-○ Realizar varias llamadas utilizando Asterisk.
-○ Realizar varias llamadas con SIPp .
-● Usar iperf para analizar la saturación de la interfaz utilizada, analizar resultados de
-la calidad de servicio en la comunicación de VoIP configurada (para SIP y para RTP).
-○ Capturar flujo con Wireshark para mostrar paquetes marcados.
-SOBRE LA DOCUMENTACIÓN A ENTREGAR (IMPRESCINDIBLE):
-Citar documentación utilizada (manuales, páginas de Internet, guías de referencia, prácticas
-de años anteriores, etc).
-ENTREGA
-La entrega se realizará mediante la plataforma moodle en formato pdf.
-ANEXO 1: Ejemplos de marcaje de paquetes bajo GNU/Linux
-Máquina origen (configuración del marcado de paquetes salientes con la tabla mangle):
-iptables -t mangle -I OUTPUT -j DSCP --setdscp 14
-En el destino (configuración de la gestión de descartes con el módulo limit):
-iptables -t filter -A INPUT -m dscp --dscp 14 -m limit --limit 5/s -j --limit-burst 5 ACCEPT
-iptables -t filter -A INPUT -m dscp --dscp 14 -j DROP
-ANEXO 2: Ejemplo de 7 llamadas cada 2 segundos con SIPp en una misma máquina
-servidor: sipp -sn uas
-cliente: sipp -sn uac -r 7 -rp 2000 127.0.0.1
-DOCUMENTACIÓN:
-● http://ipset.netfilter.org/iptables-extensions.man.html
-● https://www.cisco.com/c/en/us/td/docs/switches/datacenter/nexus1000/sw/4_0/qos/configur
-ation/guide/nexus1000v_qos/qos_6dscp_val.pdf
-● http://sipp.sourceforge.net/doc/reference.htm
+# Apartado 1: ENTORNO DE TRABAJO  
+## 1.1 Trabajar en tres máquinas (se recomiendan virtuales): router, servidor y cliente. 
+  Utilizaremos tan solo un PC, por lo que lo usaremos como router de forma nativa, y 2 maquinas virtuales, una que actuará como el servidor y otra como 
+ cliente.
+## 1.2 Configurar dos interfaces de red en el pc que actúe como router, una interfaz para el cliente y otra para el servidor en subredes distintas.  
+  Se crean las siguientes subredes:  
+```
+    RED           Direccion         Direccion de los hosts            Mascara  
+   Servidor      192.168.2.0     192.168.2.1 - 192.168.2.126      255.255.255.128  
+   Cliente       192.168.2.128   192.168.2.129 - 192.168.2.254    255.255.255.128
+```
+
+## 1.3 Configurar tablas de enrutamiento y habilitar ip_forwarding en el router.  
+
+  Para la configuración de las tablas de enrutamiento utilizaremos la función de ifconfig. Primero se configurarán las interfaces de red. Después de configurar las interfaces de red, se añaden las rutas. Lo haremos mediante los siguientes comandos:
+  ```
+  sudo ifconfig interfazRed:Nombre ipElegida netmask mascaraElegida broadcast broadcastElegido    
+  sudo route add -net ipElegida netmask mascaraElegida dev nombreInterfazElegido
+```  
+
+  Para habilitar el **ip_forwarding** accederemos, dependiendo del protocolo IPv4 o IPv6, a los archivos del directorio **proc.** Tendremos que cambiar los valores del **ip_forward** a 1 para habilitarlo y 0 para desactivarlo, siendo 0 por defecto.    
+
+# Apartado 2: MARCADO DE PAQUETES    
+## 2.1 Marcar tráfico en RTP y SIP según corresponda a valores correctos de DSCP mediante la tabla mangle de iptables.   
+  Configuración del Cliente:  
+
+   Lo primero que haremos será crear la interfaz de red   
+  `sudo ifconfig eth0:Client 192.168.2.130 netmask 255.255.255.128 broadcast 192.168.2.25`  
+  
+   Lo siguiente, sería crear una ruta para la conexión con el router.  
+  `sudo route add -net 192.168.2.128/25 gw 192.168.2.129 dev eth0:Client`  
+
+## 2.2 DSCP y prioridad RTP  
+   A continuación, marcaremos el tráfico de la interfaz del cliente en RTP y SIP mediante iptables. El valor utilizado para el **dscp ** es el valor 46, haciendo así referencia, al estándar RFC2597, Expedited Forwarding, que nos asegura la entrega y que no se descarte ningún paquete.  
+   La configuración SIP UDP  en el puerto 5060  
+   ```
+   sudo iptables -t mangle -A OUTPUT -p udp --dport 5060 -j DSCP --set-dscp 46  
+   sudo iptables -A OUTPUT -p udp --dport 5060 -j ACCEPT
+```  
+
+   El flujo de datos en RTP, relacionado con el rango de puertos de Asterisk en nuestro caso 10000:20000  
+   ```
+   sudo iptables -t mangle -A OUTPUT -p udp --dport 10000:20000 -j DSCP --set-dscp 46  
+   sudo iptables -A OUTPUT -p udp --dport 10000:20000 -j ACCEPT
+```  
+
+  Configuración del Servidor:  
+   ```
+   sudo ifconfig enp0s3:Servidor 192.168.2.2 netmask 255.255.255.128 broadcast 192.168.2.127  
+   sudo route add -net 192.168.2.128/25 gw 192.168.2.1 dev eth0:Client
+```  
+   La configuración del SIP-UDP y RTP es igual que en el caso del cliente.  
+   
+   Para finalizar este último paso, se configurará el router, en nuestro caso, nuestro PC. Debemos modificar el ip_forward, en caso de estar activo, no modificarlo.  
+   Crear 2 interfaces de red, servidor y cliente, y terminar con las rutas entre las subredes.  
+   ```
+sudo ifconfig wlp2s0:Cliente 192.168.2.129 netmask 255.255.255.128 broadcast 192.168.2.255  
+sudo ifconfig wlp2s0:Servidor 192.168.2.1 netmask 255.255.255.128 broadcast 192.168.2.127
+sudo route add -net  192.168.2.0/25 gw  192.168.2.129 dev wlp2s0:Cliente   
+sudo route add -net  192.168.2.128/25 gw  192.168.2.1 dev wlp2s0:Servidor
+```  
+
+## 2.3 Parámetros de iptables utilizados.  
+Los parámetros utilizados en iptables han sido los siguientes:  
+**-t** para utilizar las tablas MANGLE.  
+**-A** para indicar el sentido del flujo de datos OUTPUT.  
+**-p** para indicar el protocolo udp.  
+**--dport** indicar el puerto.  
+**-j** para indicar la acción en nuestros caso ACCEPT.  
+**--set-dscp** para indicar que estándar utilizar en dscp.   
+   
+# Apartado 3: ANÁLISIS DEL RENDIMIENTO  
+## 3.1 Saturar la conexión utilizando iperf  
+
+Desde el cliente ejecutamos:  
+    `sudo iperf -c 192.168.0.2 -P 1 -p 1000 -f M -t 10`  
+
+Desde el servidor ejecutamos:  
+    `sudo iperf -s -P 0 -i 1 -p 1000 -f M`  
+
+## 3.2 Generar tráfico SIP   
+Mediante reiteradas llamadas generamos tráfico SIP. Como se puede comprobar en la imagen, el tráfico SIP utiliza Expedited Forwarding.  
+El tráfico RTP contiene Expedited Forwarding también.  
+
+
+![](https://github.com/alvaroc20/PISS/blob/main/Practica4/p4.jpeg)  
+
+
+  
+     
+    
+
