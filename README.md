@@ -13,3 +13,5 @@ Crear dos centralitas con dos extensiones, que se comuniquen entre ellas mediant
 
 ### Práctica 4  
 Marcado de paquetes RTP y SIP según valores de iptables, y realizar un análisis del rendimiento. 
+
+En la wiki, se puede encontrar la documentación de las cuatro prácticas.
